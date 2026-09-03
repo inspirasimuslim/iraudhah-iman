@@ -1,0 +1,1 @@
+i-MAN website v2. Upload all files to the root of the existing GitHub Pages repository. Activity photos go in images/aktiviti/. Keep CNAME. Never upload passwords, API keys or private Google Workspace data.
