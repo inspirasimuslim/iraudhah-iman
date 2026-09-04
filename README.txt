@@ -9,3 +9,7 @@ Admin: pengurusan.html
 - Tambah, edit, delete event
 - Delete gambar individu
 - Delete event turut cuba membuang fail Storage dan rekod database
+
+V4.3:
+- Semua gambar lama dipaparkan terus dalam dashboard admin dengan butang Padam gambar.
+- Aktiviti awam dan dashboard disusun automatik ikut event_date terbaru ke paling lama.

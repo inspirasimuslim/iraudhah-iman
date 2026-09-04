@@ -1,79 +1,38 @@
-(function(){
-const url=window.IMAN_SUPABASE_URL,key=window.IMAN_SUPABASE_KEY;
-const cfg=document.getElementById('config-warning'), loginPanel=document.getElementById('login-panel'), app=document.getElementById('app-panel');
-if(!url||url.startsWith('PASTE_')||!key||key.startsWith('PASTE_')){cfg.classList.remove('hidden');return;}
-const sb=window.supabase.createClient(url,key);
-const $=id=>document.getElementById(id), msg=(el,text,cls='')=>{el.textContent=text;el.className='notice '+cls;el.classList.remove('hidden')};
-let selected=[];
-
-async function refresh(){
- const {data:{session}}=await sb.auth.getSession();
- if(session){loginPanel.classList.add('hidden');app.classList.remove('hidden');$('user-email').textContent=session.user.email||'';}
- else {loginPanel.classList.remove('hidden');app.classList.add('hidden');}
+(function(){const url=window.IMAN_SUPABASE_URL,key=window.IMAN_SUPABASE_KEY,$=id=>document.getElementById(id),cfg=$('config-warning'),loginPanel=$('login-panel'),app=$('app-panel');if(!url||!key){cfg.classList.remove('hidden');return}const sb=window.supabase.createClient(url,key);let selected=[],editingId=null;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));const note=(el,text,kind='')=>{el.textContent=text;el.className='notice '+kind;el.classList.remove('hidden')};const dateText=v=>v?new Intl.DateTimeFormat('ms-MY',{day:'numeric',month:'long',year:'numeric'}).format(new Date(v+'T00:00:00')):'';function parts(v){if(!v)return['','',''];const [y,m,d]=v.split('-');return[d,m,y]}
+async function refresh(){const{data:{session}}=await sb.auth.getSession();if(session){loginPanel.classList.add('hidden');app.classList.remove('hidden');$('user-email').textContent=session.user.email||'';loadManage()}else{loginPanel.classList.remove('hidden');app.classList.add('hidden')}}
+$('login-form').addEventListener('submit',async e=>{e.preventDefault();const{error}=await sb.auth.signInWithPassword({email:$('email').value,password:$('password').value});if(error)note($('login-msg'),'Log masuk gagal: '+error.message,'danger');await refresh()});$('logout').addEventListener('click',async()=>{await sb.auth.signOut();await refresh()});sb.auth.onAuthStateChange(()=>refresh());
+function getDate(){const d=$('day').value,m=$('month').value,y=$('year').value;if(!d||!m||!y)return'';return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`}function setDate(v){const[d,m,y]=parts(v);$('day').value=d;$('month').value=m;$('year').value=y}
+async function compress(file){const max=1800;return new Promise((resolve,reject)=>{const img=new Image(),r=new FileReader();r.onload=()=>{img.onload=()=>{let w=img.naturalWidth,h=img.naturalHeight,s=Math.min(1,max/Math.max(w,h));w=Math.round(w*s);h=Math.round(h*s);const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);let q=.78;c.toBlob(async b=>{let out=b;while(out&&out.size>1.1*1024*1024&&q>.45){q-=.07;out=await new Promise(z=>c.toBlob(z,'image/jpeg',q))}if(!out)return reject(new Error('Gagal memampatkan '+file.name));const base=(file.name.replace(/\.[^.]+$/,'')||'gambar').replace(/[^a-zA-Z0-9_-]+/g,'-').slice(0,60);resolve(new File([out],base+'-'+Date.now()+'.jpg',{type:'image/jpeg'}))},'image/jpeg',q)};img.onerror=()=>reject(new Error('Fail imej tidak boleh dibaca: '+file.name));img.src=r.result};r.onerror=()=>reject(r.error);r.readAsDataURL(file)})}
+function renderPreviews(){const box=$('previews');box.innerHTML=selected.map(f=>{const u=URL.createObjectURL(f);return `<div class="preview"><img src="${u}" alt=""><small>${esc(f.name)}<br>${Math.round(f.size/1024)} KB</small></div>`}).join('')}
+$('photos').addEventListener('change',async e=>{selected=[];$('previews').innerHTML='';for(const f of [...e.target.files]){try{selected.push(await compress(f))}catch(err){note($('save-msg'),err.message,'danger')}}renderPreviews()});$('clear-btn').addEventListener('click',clearForm);
+function clearForm(){editingId=null;$('event-form').reset();setDate('');selected=[];$('photos').value='';$('previews').innerHTML='';$('progress').style.width='0';$('save-btn').textContent='Simpan program & muat naik gambar';$('form-title').textContent='Tambah program';$('save-msg').classList.add('hidden')}
+async function saveEvent(e){e.preventDefault();const btn=$('save-btn');btn.disabled=true;try{const{data:{user}}=await sb.auth.getUser();if(!user)throw Error('Sesi log masuk tamat.');const eventDate=getDate();if(!eventDate)throw Error('Sila pilih hari, bulan dan tahun.');const payload={title:$('title').value.trim(),event_date:eventDate,location:$('location').value.trim(),category:$('category').value,description:$('description').value.trim()};let id=editingId;if(id){const{error}=await sb.from('events').update(payload).eq('id',id);if(error)throw error}else{const{data,error}=await sb.from('events').insert(payload).select().single();if(error)throw error;id=data.id}
+if(selected.length){let cover=null;for(let i=0;i<selected.length;i++){const f=selected[i],path='events/'+id+'/'+String(Date.now())+'-'+String(i+1).padStart(3,'0')+'-'+f.name;const{error:ue}=await sb.storage.from('activity-photos').upload(path,f,{cacheControl:'31536000',upsert:false,contentType:'image/jpeg'});if(ue)throw ue;const{error:pe}=await sb.from('event_photos').insert({event_id:id,file_path:path,caption:'',sort_order:i});if(pe)throw pe;if(!cover)cover=path;$('progress').style.width=Math.round((i+1)/selected.length*100)+'%'}if(cover){const{error}=await sb.from('events').update({cover_image:cover}).eq('id',id);if(error)throw error}}
+note($('save-msg'),editingId?'Program berjaya dikemas kini.':'Program berjaya disimpan'+(selected.length?' dan '+selected.length+' gambar dimuat naik.':'.'),'success');editingId=null;$('event-form').reset();setDate('');selected=[];$('photos').value='';$('previews').innerHTML='';$('progress').style.width='0';$('save-btn').textContent='Simpan program & muat naik gambar';$('form-title').textContent='Tambah program';loadManage()}catch(err){console.error(err);note($('save-msg'),'Gagal: '+(err.message||err),'danger')}finally{btn.disabled=false}}
+$('event-form').addEventListener('submit',saveEvent);
+async function loadManage(){
+const box=$('manage-list');box.innerHTML='<div class="notice">Memuatkan senarai aktiviti…</div>';
+const{data:events,error}=await sb.from('events').select('id,title,event_date,location,category,cover_image').order('event_date',{ascending:false});
+if(error){box.innerHTML='<div class="notice danger">Gagal memuatkan senarai.</div>';return}
+if(!events?.length){box.innerHTML='<div class="empty-state">Belum ada aktiviti.</div>';return}
+const ids=events.map(e=>e.id);
+const{data:photos,error:photoErr}=await sb.from('event_photos').select('id,event_id,file_path,caption,sort_order').in('event_id',ids).order('sort_order',{ascending:true});
+if(photoErr){box.innerHTML='<div class="notice danger">Aktiviti berjaya dimuatkan tetapi gambar gagal dibaca: '+esc(photoErr.message)+'</div>';return}
+const grouped={};for(const p of photos||[]){(grouped[p.event_id]??=[]).push(p)}
+box.innerHTML=events.map(e=>{
+ const cover=e.cover_image?sb.storage.from('activity-photos').getPublicUrl(e.cover_image).data.publicUrl:'images/logo.png';
+ const ps=grouped[e.id]||[];
+ const thumbs=ps.length?`<div class="inline-photo-manager"><div class="inline-photo-title">Gambar (${ps.length}) <span>— tekan Padam pada gambar yang tersalah upload</span></div><div class="inline-photo-grid">${ps.map(p=>{const u=sb.storage.from('activity-photos').getPublicUrl(p.file_path).data.publicUrl;return `<div class="inline-photo-item"><img src="${esc(u)}" alt=""><button type="button" class="inline-photo-delete" data-photo="${p.id}" data-path="${esc(p.file_path)}" data-event="${e.id}">Padam gambar</button></div>`}).join('')}</div></div>`:`<div class="inline-photo-manager empty-inline">Belum ada gambar untuk program ini.</div>`;
+ return `<div class="manage-card"><div class="manage-item"><img src="${esc(cover)}" alt=""><div><strong>${esc(e.title)}</strong><div class="meta">${esc(dateText(e.event_date))}${e.location?' · '+esc(e.location):''}</div></div><div class="manage-actions"><button class="btn soft" data-edit="${e.id}">Edit</button><button class="btn danger-btn" data-delete="${e.id}">Padam program</button></div></div>${thumbs}</div>`
+}).join('');
+box.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>editEvent(b.dataset.edit));
+box.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>deleteEvent(b.dataset.delete));
+box.querySelectorAll('.inline-photo-delete').forEach(b=>b.onclick=()=>deletePhoto(b.dataset.photo,b.dataset.path,b.dataset.event));
 }
-$('login-form').addEventListener('submit',async e=>{
- e.preventDefault(); const {error}=await sb.auth.signInWithPassword({email:$('email').value,password:$('password').value});
- if(error) msg($('login-msg'),'Log masuk gagal: '+error.message,'danger'); else $('login-msg').classList.add('hidden');
- await refresh();
-});
-$('logout').addEventListener('click',async()=>{await sb.auth.signOut();await refresh()});
-sb.auth.onAuthStateChange(()=>refresh());
-
-async function compress(file){
- const max=1800, quality=.78;
- return new Promise((resolve,reject)=>{
-  const img=new Image(), reader=new FileReader();
-  reader.onload=()=>{img.onload=()=>{
-    let w=img.naturalWidth,h=img.naturalHeight, scale=Math.min(1,max/Math.max(w,h)); w=Math.round(w*scale);h=Math.round(h*scale);
-    const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.drawImage(img,0,0,w,h);
-    c.toBlob(async blob=>{
-      if(!blob){reject(new Error('Gagal memampatkan '+file.name));return;}
-      // If still >1.5MB, reduce quality gradually.
-      let q=.78, out=blob;
-      while(out.size>1.5*1024*1024 && q>.45){
-        q-=.08; out=await new Promise(r=>c.toBlob(r,'image/jpeg',q));
-      }
-      const base=(file.name.replace(/\.[^.]+$/,'')||'gambar').replace(/[^a-zA-Z0-9_-]+/g,'-').slice(0,80);
-      resolve(new File([out],base+'-'+Date.now()+'.jpg',{type:'image/jpeg'}));
-    },'image/jpeg',quality);
-  };img.onerror=()=>reject(new Error('Fail imej tidak boleh dibaca: '+file.name));img.src=reader.result;};
-  reader.onerror=()=>reject(reader.error);reader.readAsDataURL(file);
- });
-}
-function renderPreviews(){
- const box=$('previews');box.innerHTML='';
- selected.forEach((f,i)=>{const d=document.createElement('div');d.className='preview';const u=URL.createObjectURL(f);d.innerHTML='<img src="'+u+'" alt=""><small>'+f.name+'<br>'+Math.round(f.size/1024)+' KB</small>';box.appendChild(d);});
-}
-$('photos').addEventListener('change',async e=>{
- const files=[...e.target.files]; if(!files.length)return;
- $('save-msg').classList.add('hidden'); selected=[];
- for(let i=0;i<files.length;i++){try{selected.push(await compress(files[i]));}catch(err){msg($('save-msg'),err.message,'danger');}}
- renderPreviews();
-});
-$('clear-btn').addEventListener('click',()=>{selected=[];$('photos').value='';$('previews').innerHTML='';$('event-form').reset();$('progress').style.width='0';$('save-msg').classList.add('hidden')});
-
-$('event-form').addEventListener('submit',async e=>{
- e.preventDefault(); const btn=$('save-btn');btn.disabled=true;
- try{
-  const {data:{user}}=await sb.auth.getUser(); if(!user) throw new Error('Sesi log masuk tamat.');
-  if(!selected.length) throw new Error('Pilih sekurang-kurangnya satu gambar.');
-  const title=$('title').value.trim(), date=$('event-date').value;
-  const {data:event,error:ee}=await sb.from('events').insert({title,event_date:date,location:$('location').value.trim(),category:$('category').value,description:$('description').value.trim()}).select().single();
-  if(ee) throw ee;
-  let cover=null;
-  for(let i=0;i<selected.length;i++){
-   const f=selected[i], path='events/'+event.id+'/'+String(i+1).padStart(3,'0')+'-'+f.name;
-   const {error:ue}=await sb.storage.from('activity-photos').upload(path,f,{cacheControl:'31536000',upsert:false,contentType:'image/jpeg'});
-   if(ue) throw ue;
-   const {error:pe}=await sb.from('event_photos').insert({event_id:event.id,file_path:path,caption:'',sort_order:i});
-   if(pe) throw pe;
-   if(!cover) cover=path; $('progress').style.width=Math.round(((i+1)/selected.length)*100)+'%';
-  }
-  const {error:ce}=await sb.from('events').update({cover_image:cover}).eq('id',event.id); if(ce) throw ce;
-  msg($('save-msg'),'Program berjaya disimpan dan '+selected.length+' gambar telah dimuat naik.','success');
-  $('event-form').reset();selected=[];$('photos').value='';$('previews').innerHTML='';
- }catch(err){console.error(err);msg($('save-msg'),'Gagal: '+(err.message||err),'danger')}
- finally{btn.disabled=false}
-});
-refresh();
-})();
+async function editEvent(id){const{data,error}=await sb.from('events').select('*').eq('id',id).single();if(error)return note($('manage-msg'),'Gagal mengambil program.','danger');editingId=id;$('title').value=data.title||'';$('location').value=data.location||'';$('category').value=data.category||'Program';$('description').value=data.description||'';setDate(data.event_date);selected=[];$('photos').value='';$('previews').innerHTML='';$('form-title').textContent='Edit program';$('save-btn').textContent='Simpan perubahan & gambar baharu';await loadPhotoManager(id);window.scrollTo({top:$('event-form').offsetTop-90,behavior:'smooth'})}
+async function openPhotoManager(id){editingId=id;await loadPhotoManager(id);const box=$('photo-manager');box.scrollIntoView({behavior:'smooth',block:'center'});}
+async function loadPhotoManager(id){const box=$('photo-manager');box.innerHTML='<div class="photo-manager-head"><strong>Gambar sedia ada</strong><span class="meta">Tekan Padam pada gambar yang tersalah upload.</span></div><div class="notice">Memuatkan gambar…</div>';const{data,error}=await sb.from('event_photos').select('id,file_path,caption,sort_order').eq('event_id',id).order('sort_order');if(error){box.innerHTML='<div class="notice danger">Gagal memuatkan gambar: '+esc(error.message)+'</div>';return}if(!data?.length){box.innerHTML='<div class="photo-manager-head"><strong>Gambar sedia ada</strong></div><div class="meta">Belum ada gambar untuk program ini.</div>';return}box.innerHTML='<div class="photo-manager-head"><strong>Gambar sedia ada</strong><span class="meta">'+data.length+' gambar · Padam jika tersalah upload.</span></div><div class="photo-manager-grid">'+data.map(p=>{const u=sb.storage.from('activity-photos').getPublicUrl(p.file_path).data.publicUrl;return `<div class="photo-item"><img src="${esc(u)}" alt=""><div class="photo-caption">${esc(p.caption||'')}</div><button class="photo-delete" type="button" data-photo="${p.id}" data-path="${esc(p.file_path)}">Padam</button></div>`}).join('')+'</div>';box.querySelectorAll('[data-photo]').forEach(b=>b.onclick=()=>deletePhoto(b.dataset.photo,b.dataset.path,id))}
+async function deletePhoto(photoId,path,eventId){if(!confirm('Padam gambar ini?'))return;const{error:se}=await sb.storage.from('activity-photos').remove([path]);if(se){note($('manage-msg'),'Gagal memadam fail gambar: '+se.message,'danger');return}const{error:de}=await sb.from('event_photos').delete().eq('id',photoId);if(de){note($('manage-msg'),'Fail dipadam tetapi rekod gagal dibersihkan.','danger');return}const{data:cover}=await sb.from('events').select('cover_image').eq('id',eventId).single();if(cover?.cover_image===path){const{data:first}=await sb.from('event_photos').select('file_path').eq('event_id',eventId).order('sort_order').limit(1);await sb.from('events').update({cover_image:first?.[0]?.file_path||null}).eq('id',eventId)}loadPhotoManager(eventId);loadManage()}
+async function deleteEvent(id){if(!confirm('Padam program ini? Semua rekod dan gambar program akan dipadam. Tindakan ini tidak boleh dibuat asal.'))return;const{data:photos}=await sb.from('event_photos').select('file_path').eq('event_id',id);if(photos?.length){const{error}=await sb.storage.from('activity-photos').remove(photos.map(x=>x.file_path));if(error){note($('manage-msg'),'Gagal memadam gambar: '+error.message,'danger');return}}await sb.from('event_photos').delete().eq('event_id',id);const{error}=await sb.from('events').delete().eq('id',id);if(error){note($('manage-msg'),'Gagal memadam program: '+error.message,'danger');return}note($('manage-msg'),'Program dan gambar berkaitan berjaya dipadam.','success');if(editingId===id)clearForm();loadManage()}
+refresh();})();

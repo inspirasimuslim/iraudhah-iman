@@ -1,4 +1,4 @@
-// i-MAN V3 — Supabase configuration
+// i-MAN V4 — Supabase configuration
 // Publishable key is safe for browser use when RLS/policies are configured correctly.
 // Never put a service_role/secret key in this file.
 window.IMAN_SUPABASE_URL = "https://xxxbsoalktbpiystiblq.supabase.co";

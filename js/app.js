@@ -1,1 +1,1 @@
-document.querySelector('.menu-toggle')?.addEventListener('click',()=>document.querySelector('.menu')?.classList.toggle('open'));
+(function(){const t=document.querySelector('.menu-toggle'),m=document.querySelector('.menu');if(t&&m)t.addEventListener('click',()=>{m.classList.toggle('open');t.setAttribute('aria-expanded',m.classList.contains('open'))});const path=location.pathname.split('/').pop()||'index.html';document.querySelectorAll('.menu a').forEach(a=>{if(a.getAttribute('href')===path)a.classList.add('active')});})();
