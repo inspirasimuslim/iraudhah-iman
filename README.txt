@@ -13,3 +13,5 @@ Admin: pengurusan.html
 V4.3:
 - Semua gambar lama dipaparkan terus dalam dashboard admin dengan butang Padam gambar.
 - Aktiviti awam dan dashboard disusun automatik ikut event_date terbaru ke paling lama.
+
+V4.4: Setiap gambar album kini boleh dipilih sebagai thumbnail/cover. Thumbnail terpilih digunakan pada senarai aktiviti awam dan dashboard admin. Menambah gambar baharu pada event sedia ada tidak lagi menukar thumbnail pilihan secara automatik.
